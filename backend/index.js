@@ -142,7 +142,7 @@ ${loreText}
                 },
             ],
             temperature: 0.7,
-            max_tokens: 200000,
+            max_tokens: 16000,
         });
 
         let content = response.choices[0].message.content;

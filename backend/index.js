@@ -1,5 +1,9 @@
 // backend/index.js
 
+Object.keys(require.cache).forEach(key => {
+    delete require.cache[key];
+});
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -19,11 +23,14 @@ const TIMEOUT = 60000; // 60 seconds
 // Add broadcast function
 // Add this after your broadcast function
 function broadcast(message) {
-    console.log('Broadcasting:', message); // Debug log
+    console.log('Broadcasting:', message);
+    if (typeof message === 'string') {
+        console.log(message);
+    }
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify(message));
-            console.log('Message sent to client'); // Debug log
+            console.log('Message sent to client');
         }
     });
 }
@@ -45,14 +52,24 @@ async function withRetry(operation, maxAttempts = 3) {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-            console.log(`Attempt ${attempt}/${maxAttempts}`);
+            const attemptMessage = `Attempt ${attempt}/${maxAttempts}`;
+            console.log(attemptMessage);
+            broadcast({ type: 'log', message: attemptMessage });
+
             const result = await operation();
             return result;
         } catch (error) {
             lastError = error;
-            console.error(`Attempt ${attempt}/${maxAttempts} failed:`, error.message);
+            const errorMessage = `Attempt ${attempt}/${maxAttempts} failed: ${error.message}`;
+            console.error(errorMessage);
+            broadcast({ type: 'log', message: errorMessage });
+
             if (attempt === maxAttempts) break;
-            console.log(`Waiting 2 seconds before retry ${attempt + 1}...`);
+
+            const retryMessage = `Waiting 2 seconds before retry ${attempt + 1}...`;
+            console.log(retryMessage);
+            broadcast({ type: 'log', message: retryMessage });
+
             await new Promise((resolve) => setTimeout(resolve, 2000));
         }
     }
@@ -60,9 +77,12 @@ async function withRetry(operation, maxAttempts = 3) {
     throw lastError;
 }
 
-// Generate character summaries and relationships
 async function generateCharacterFramework(openai, loreText, characterNames) {
     console.log(`\nGenerating character framework for ${characterNames.length} characters...`);
+    broadcast({
+        type: 'log',
+        message: `Generating character framework for ${characterNames.length} characters...`
+    });
 
     const namesList = characterNames.map((name, index) => `${index + 1}. ${name}`).join('\n');
 
@@ -108,6 +128,11 @@ ${loreText}
 
     try {
         console.log('Sending request to OpenAI API for character framework...');
+        broadcast({
+            type: 'log',
+            message: 'Sending request to OpenAI API for character framework...'
+        });
+
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
@@ -117,7 +142,7 @@ ${loreText}
                 },
             ],
             temperature: 0.7,
-            max_tokens: 2000,
+            max_tokens: 200000,
         });
 
         let content = response.choices[0].message.content;
@@ -128,12 +153,41 @@ ${loreText}
         // Parse the JSON response
         const framework = JSON.parse(content);
 
+        // Log the generated framework
+        console.log('Generated character framework:', JSON.stringify(framework, null, 2));
+        broadcast({
+            type: 'log',
+            message: '✓ Character framework generated successfully'
+        });
+
+        // Log each character's details
+        framework.characters.forEach((char, index) => {
+            console.log(`\nCharacter ${index + 1}: ${char.name}`);
+            broadcast({
+                type: 'log',
+                message: `Character ${index + 1}: ${char.name}`
+            });
+
+            // Log relationships
+            char.relationships.forEach(rel => {
+                broadcast({
+                    type: 'log',
+                    message: `  ↳ Relationship with ${rel.name}: ${rel.relationship}`
+                });
+            });
+        });
+
         return framework.characters;
     } catch (error) {
         console.error('Error generating character framework:', error);
+        broadcast({
+            type: 'log',
+            message: `❌ Error generating character framework: ${error.message}`
+        });
         throw error;
     }
 }
+
 
 // Generate bio
 async function generateBio(openai, loreText, charSummary) {
@@ -158,7 +212,6 @@ ${charSummary.relationships.map((rel) => `- ${rel.name}: ${rel.relationship} (${
 - Provide between **10 to 50** statements in the bio.
 - Make all statements assertive and direct with strong claims.
 - Include specific numbers, names, and concrete details.
-- Use emphasis (CAPS) for key points and contrasts.
 - Reference events, places, and other characters by name.
 - Show strong personality and opinions in all content.
 - Include concrete accomplishments and specific claims.
@@ -355,7 +408,6 @@ ${charSummary.summary}
 - The first message should be from "{{user1}}", asking a question or making a statement.
 - The second message should be from "${charSummary.name}", responding in character.
 - Make every statement impactful and declarative.
-- Use emphasis (CAPS) for key points and contrasts.
 - Output should be a JSON array of arrays, each containing two message objects.
 
 **Example Output:**
@@ -430,7 +482,6 @@ ${charSummary.summary}
 
 - Make every post impactful and declarative.
 - Include specific numbers, names, and concrete details.
-- Use emphasis (CAPS) for key points and contrasts.
 - Show strong personality and opinions.
 - Output should be a JSON array of strings.
 
@@ -743,7 +794,9 @@ function updateCharacterWithRelationships(character, characterFramework) {
 
 // Generate character
 async function createCharacter(openai, loreText, charSummary, characterNumber) {
+    const totalCharacters = charSummary.length;
     console.log(`\nGenerating character ${characterNumber}: ${charSummary.name}...`);
+    broadcast({ type: 'log', message: `Generating character ${characterNumber}: ${charSummary.name}...` });
 
     const character = {
         name: charSummary.name,
@@ -772,26 +825,51 @@ async function createCharacter(openai, loreText, charSummary, characterNumber) {
     };
 
     try {
-        // Generate each section
-        character.bio = await withRetry(() => generateBio(openai, loreText, charSummary));
-        character.lore = await withRetry(() => generateLore(openai, loreText, charSummary));
-        character.knowledge = await withRetry(() => generateKnowledge(openai, loreText, charSummary));
-        character.messageExamples = await withRetry(() => generateMessageExamples(openai, loreText, charSummary));
-        character.postExamples = await withRetry(() => generatePostExamples(openai, loreText, charSummary));
-        character.topics = await withRetry(() => generateTopics(openai, loreText, charSummary));
-        character.style = await withRetry(() => generateStyle(openai, loreText, charSummary));
-        character.adjectives = await withRetry(() => generateAdjectives(openai, loreText, charSummary));
+        // Generate each section with detailed logging
+        const sections = [
+            { name: 'bio', fn: generateBio },
+            { name: 'lore', fn: generateLore },
+            { name: 'knowledge', fn: generateKnowledge },
+            { name: 'messageExamples', fn: generateMessageExamples },
+            { name: 'postExamples', fn: generatePostExamples },
+            { name: 'topics', fn: generateTopics },
+            { name: 'style', fn: generateStyle },
+            { name: 'adjectives', fn: generateAdjectives }
+        ];
+
+        for (const section of sections) {
+            const stepMessage = `Generating ${section.name} for ${charSummary.name}...`;
+            console.log(stepMessage);
+            broadcast({ type: 'log', message: stepMessage });
+
+            character[section.name] = await withRetry(async () => {
+                const result = await section.fn(openai, loreText, charSummary);
+                broadcast({
+                    type: 'log',
+                    message: `✓ Completed ${section.name} generation for ${charSummary.name}`
+                });
+                return result;
+            });
+        }
 
         // Validate the character
         const validationErrors = validateCharacter(character);
         if (validationErrors.length > 0) {
             console.error(`Validation errors for ${charSummary.name}:`, validationErrors);
+            broadcast({
+                type: 'log',
+                message: `❌ Validation errors for ${charSummary.name}: ${validationErrors.join(', ')}`
+            });
             throw new Error(`Character validation failed: ${validationErrors.join(', ')}`);
         }
 
         return character;
     } catch (error) {
         console.error(`Error in createCharacter for ${charSummary.name}:`, error.message);
+        broadcast({
+            type: 'log',
+            message: `❌ Error generating ${charSummary.name}: ${error.message}`
+        });
         throw error;
     }
 }
@@ -802,13 +880,11 @@ app.post('/api/generate', async (req, res) => {
     try {
         const { apiKey, loreText, namesText, numCharacters, temperature } = req.body;
 
-        // Initialize OpenAI client with the provided API key
         const openai = new OpenAI({
             apiKey: apiKey,
             timeout: TIMEOUT,
         });
 
-        // Parse the names from namesText
         const names = namesText
             .split('\n')
             .map(name => name.trim())
@@ -818,7 +894,7 @@ app.post('/api/generate', async (req, res) => {
             return res.status(400).json({ error: 'Not enough names provided' });
         }
 
-        const characters = []; // Initialize characters array
+        const characters = [];
         const characterNames = names.slice(0, numCharacters);
 
         broadcast({
@@ -827,34 +903,32 @@ app.post('/api/generate', async (req, res) => {
             progress: 0
         });
 
-        // Generate character framework
+        // Generate character framework with proper logging
+        const frameworkMessage = `Generating character framework for ${characterNames.length} characters...`;
+        console.log(frameworkMessage);
         broadcast({
             type: 'progress',
-            step: `Generating character framework for ${characterNames.length} characters...`,
+            step: frameworkMessage,
             progress: 5
         });
 
         const characterFramework = await generateCharacterFramework(openai, loreText, characterNames);
 
-        // Generate characters with progress updates
         const totalSteps = characterNames.length * 8; // 8 generation steps per character
         let completedSteps = 0;
 
+        // Generate characters with correct indexing and detailed progress updates
         for (let i = 0; i < characterFramework.length; i++) {
             const charSummary = characterFramework[i];
+            const currentCharacterNumber = i + 1;
+
             try {
                 broadcast({
                     type: 'log',
-                    message: `Starting generation for ${charSummary.name}...`
+                    message: `Starting generation for ${charSummary.name} (Character ${currentCharacterNumber}/${characterNames.length})...`
                 });
 
-                const character = await createCharacter(openai, loreText, charSummary, i + 1);
-                completedSteps++;
-                broadcast({
-                    type: 'progress',
-                    step: `Generating character ${i + 1} of ${characterNames.length}`,
-                    progress: 5 + ((completedSteps / totalSteps) * 90)
-                });
+                const character = await createCharacter(openai, loreText, charSummary, currentCharacterNumber, characterNames.length);
 
                 if (character) {
                     characters.push(character);
@@ -871,7 +945,12 @@ app.post('/api/generate', async (req, res) => {
             }
         }
 
-        // Update character relationships
+        // Update relationships with logging
+        broadcast({
+            type: 'log',
+            message: 'Updating character relationships...'
+        });
+
         characters.forEach(char => {
             updateCharacterWithRelationships(char, characterFramework);
         });
@@ -892,6 +971,98 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
+// Update the createCharacter function
+async function createCharacter(openai, loreText, charSummary, characterNumber, totalCharacters) {
+    console.log(`\nGenerating character ${characterNumber}: ${charSummary.name}...`);
+    broadcast({ type: 'log', message: `Generating character ${characterNumber}: ${charSummary.name}...` });
+
+    const character = {
+        name: charSummary.name,
+        clients: [],
+        modelProvider: 'anthropic',
+        settings: {
+            secrets: {},
+            voice: {
+                model: 'en_US-male-medium',
+            },
+        },
+        plugins: [],
+        bio: [],
+        lore: [],
+        knowledge: [],
+        messageExamples: [],
+        postExamples: [],
+        topics: [],
+        style: {
+            all: [],
+            chat: [],
+            post: [],
+        },
+        adjectives: [],
+        relationships: charSummary.relationships || [],
+    };
+
+    try {
+        // Generate each section with detailed logging
+        const sections = [
+            { name: 'bio', fn: generateBio },
+            { name: 'lore', fn: generateLore },
+            { name: 'knowledge', fn: generateKnowledge },
+            { name: 'messageExamples', fn: generateMessageExamples },
+            { name: 'postExamples', fn: generatePostExamples },
+            { name: 'topics', fn: generateTopics },
+            { name: 'style', fn: generateStyle },
+            { name: 'adjectives', fn: generateAdjectives }
+        ];
+
+        for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+            const section = sections[sectionIndex];
+            const stepMessage = `Generating ${section.name} for ${charSummary.name}...`;
+            console.log(stepMessage);
+            broadcast({ type: 'log', message: stepMessage });
+
+            character[section.name] = await withRetry(async () => {
+                const result = await section.fn(openai, loreText, charSummary);
+                broadcast({
+                    type: 'log',
+                    message: `✓ Completed ${section.name} generation for ${charSummary.name}`
+                });
+                return result;
+            });
+
+            // Calculate progress for this specific section
+            const progressPerCharacter = 90 / totalCharacters;
+            const progressPerSection = progressPerCharacter / sections.length;
+            const currentProgress = 5 + ((characterNumber - 1) * progressPerCharacter) + (sectionIndex * progressPerSection);
+
+            broadcast({
+                type: 'progress',
+                step: `Generating character ${characterNumber} of ${totalCharacters}`,
+                progress: currentProgress
+            });
+        }
+
+        // Validate the character
+        const validationErrors = validateCharacter(character);
+        if (validationErrors.length > 0) {
+            console.error(`Validation errors for ${charSummary.name}:`, validationErrors);
+            broadcast({
+                type: 'log',
+                message: `❌ Validation errors for ${charSummary.name}: ${validationErrors.join(', ')}`
+            });
+            throw new Error(`Character validation failed: ${validationErrors.join(', ')}`);
+        }
+
+        return character;
+    } catch (error) {
+        console.error(`Error in createCharacter for ${charSummary.name}:`, error.message);
+        broadcast({
+            type: 'log',
+            message: `❌ Error generating ${charSummary.name}: ${error.message}`
+        });
+        throw error;
+    }
+}
 // Start the server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {

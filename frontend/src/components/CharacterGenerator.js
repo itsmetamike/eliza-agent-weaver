@@ -1,30 +1,40 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, AlertCircle, TerminalIcon } from 'lucide-react'; // Changed Terminal to TerminalIcon
+import { Loader2, TerminalIcon } from 'lucide-react';
 import CharacterViewer from './CharacterViewer';
 import mermaid from 'mermaid';
+import SimpleRelationshipView from './SimpleRelationshipView';
 
-// Initialize mermaid with custom styling
+// Updated Mermaid initialization with requested settings
 mermaid.initialize({
     startOnLoad: true,
     theme: 'default',
     securityLevel: 'loose',
+    fontSize: 18,
+    fontFamily: 'Courier New',
+    flowchart: {
+        nodeSpacing: 100,
+        rankSpacing: 100,
+        curve: 'basis',
+        htmlLabels: true,
+        padding: 20,
+        useMaxWidth: false // This helps with sizing
+    },
     themeVariables: {
         primaryColor: '#f79321',
         primaryTextColor: '#fff',
         primaryBorderColor: '#f79321',
         lineColor: '#f79321',
         secondaryColor: '#fff',
-        tertiaryColor: '#fff'
+        tertiaryColor: '#fff',
+        fontSize: '18px'
     }
 });
 
-// Add this near the top of the file, after the imports but before any components
 const sanitizeName = (name) => {
     return name.replace(/[^a-zA-Z0-9\s]/g, '')
         .replace(/\s+/g, '_');
 };
 
-// Keep your existing RelationshipDiagram component, which can now use the sanitizeName function
 const RelationshipDiagram = ({ characters }) => {
     const diagramRef = useRef(null);
 
@@ -32,28 +42,42 @@ const RelationshipDiagram = ({ characters }) => {
         const generateDiagram = async () => {
             if (diagramRef.current && characters.length > 0) {
                 try {
-                    let graphDefinition = 'graph TD\n';
-                    // First add all nodes
+                    let graphDefinition = 'graph LR\n';
+
                     characters.forEach(char => {
-                        const nodeId = sanitizeName(char.name);
-                        graphDefinition += `${nodeId}["${char.name}"]\n`;
+                        const charId = sanitizeName(char.name);
+                        graphDefinition += `${charId}["<div style='padding: 15px; font-size: 16px;'>
+    <div style='font-size: 20px; font-weight: bold; margin-bottom: 10px;'>${char.name}</div>
+    ${getCharacterTitle(char) ? `<div style='font-size: 16px; margin-bottom: 8px;'>${getCharacterTitle(char)}</div>` : ''}
+    ${getKeyTraits(char) ? `<div style='font-size: 16px;'>${getKeyTraits(char)}</div>` : ''}
+</div>"]\n`;
                     });
 
-                    // Then add relationships
                     const addedRelationships = new Set();
                     characters.forEach(char => {
                         if (char.relationships) {
                             char.relationships.forEach(rel => {
-                                const sourceId = sanitizeName(char.name);
-                                const targetId = sanitizeName(rel.name);
-                                const relationshipKey = [sourceId, targetId].sort().join('-');
+                                const fromId = sanitizeName(char.name);
+                                const toId = sanitizeName(rel.name);
+                                const relationshipKey = [fromId, toId].sort().join('-');
                                 if (!addedRelationships.has(relationshipKey)) {
-                                    graphDefinition += `${sourceId} --- |"${rel.relationship}"| ${targetId}\n`;
+                                    const formattedRelationship = `<div style='padding: 10px; font-size: 16px;'>
+    <div style='font-weight: bold; margin-bottom: 8px;'>${rel.relationship}</div>
+    ${formatRelationship(rel)}
+</div>`;
+                                    graphDefinition += `${fromId} ---|"${formattedRelationship}"| ${toId}\n`;
                                     addedRelationships.add(relationshipKey);
                                 }
                             });
                         }
                     });
+
+                    // Style nodes and edges
+                    graphDefinition += `
+    classDef default fill:#f0f7ff,stroke:#333,stroke-width:2px;
+    classDef relationship stroke:#f79321,color:#333;
+    linkStyle default stroke:#f79321,stroke-width:2px,fill:none;
+    `;
 
                     const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
                     const { svg } = await mermaid.render(id, graphDefinition);
@@ -67,10 +91,54 @@ const RelationshipDiagram = ({ characters }) => {
         generateDiagram();
     }, [characters]);
 
+    const getCharacterTitle = (char) => {
+        const title = char.bio
+            .find(line => line.toLowerCase().includes('role') || line.toLowerCase().includes('profession') || line.toLowerCase().includes('occupation'))
+            ?.split('.')[0] || char.bio[0]?.split('.')[0] || '';
+
+        const keyInfo = char.knowledge
+            .find(k => k.toLowerCase().includes('created') || k.toLowerCase().includes('founded') || k.toLowerCase().includes('pioneered'))
+            ?.split('.')[0] || '';
+
+        return [title, keyInfo]
+            .filter(Boolean)
+            .join('<br/>');
+    };
+
+    const formatRelationship = (rel) => {
+        const details = rel.details
+            .split('.')
+            .filter(d => d.trim())
+            .map(d => `• ${d.trim()}`)
+            .join('<br/>');
+
+        return details;
+    };
+
+    const getKeyTraits = (char) => {
+        const traits = char.knowledge
+            .filter(k =>
+                k.toLowerCase().includes('specializes') ||
+                k.toLowerCase().includes('known for') ||
+                k.toLowerCase().includes('expert in'))
+            .slice(0, 2)
+            .map(t => `• ${t.trim()}`)
+            .join('<br/>');
+
+        return traits;
+    };
+
     return (
         <div className="mt-8 p-4 bg-white rounded-lg shadow">
-            <h2 className="text-xl font-bold text-[#f79321] mb-4">Character Relationships</h2>
-            <div ref={diagramRef} className="overflow-x-auto"></div>
+            <h2 className="text-xl font-bold text-[#f79321] mb-4 text-left">Character Relationships</h2>
+            <div
+                ref={diagramRef}
+                className="overflow-x-auto min-h-[600px]"
+                style={{
+                    transform: 'scale(1.2)',
+                    transformOrigin: 'center center'
+                }}
+            />
         </div>
     );
 };
@@ -89,10 +157,13 @@ const formatLog = (log) => {
 };
 
 const GenerationProgress = ({ progress, currentStep, logs }) => {
-    const logsEndRef = useRef(null); // Add this line to define the ref
+    const logsEndRef = useRef(null);
 
     const formatGenerationStep = (step) => {
-        if (step.includes('Attempt') || step.includes('Sending')) {
+        if (step.includes('Attempt') ||
+            step.includes('Sending') ||
+            step.includes('Broadcasting') ||
+            step.includes('Message sent')) {
             return null;
         }
         return step;
@@ -163,7 +234,6 @@ const CharacterGenerator = () => {
     const [currentStep, setCurrentStep] = useState('');
     const [logs, setLogs] = useState([]);
 
-
     // Handle form input changes
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -173,8 +243,7 @@ const CharacterGenerator = () => {
         }));
     };
 
-    // Add WebSocket connection
-    // In CharacterGenerator.js, update the WebSocket useEffect
+    // WebSocket connection
     useEffect(() => {
         let ws;
         try {
@@ -270,45 +339,25 @@ const CharacterGenerator = () => {
         }
     };
 
-    const TypingText = ({ text, className, speed = 50 }) => {
-        const [displayedText, setDisplayedText] = useState('');
-
-        useEffect(() => {
-            let index = 0;
-            const timer = setInterval(() => {
-                if (index < text.length) {
-                    setDisplayedText((prev) => prev + text.charAt(index));
-                    index++;
-                } else {
-                    clearInterval(timer);
-                }
-            }, speed);
-
-            return () => clearInterval(timer);
-        }, [text, speed]);
-
-        return <span className={className}>{displayedText}</span>;
-    };
-
     return (
         <div className="min-h-screen bg-black text-[#f79321] p-6">
             <style jsx global>{`
-                * {
-                    font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
-                }
-                pre {
-                    font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
-                }
-                textarea, input {
-                    font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
-                }
-            `}</style>
+        * {
+          font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
+        }
+        pre {
+          font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
+        }
+        textarea, input {
+          font-family: "Courier New", Courier, "Lucida Console", Monaco, monospace;
+        }
+      `}</style>
 
             <div className="scanline" />
             <div className="max-w-6xl mx-auto space-y-8">
-                {/* ASCII Logo - only this keeps monospace */}
-                <div className="space-y-4">
-                    <pre className="text-[#f79321] text-lg whitespace-pre">
+                {/* ASCII Logo */}
+                <div className="flex justify-center items-center">
+                    <pre className="text-[#f79321] text-lg whitespace-pre text-center">
                         {`
                          .---.                          
            __.....__     |   |.--.                      
@@ -321,11 +370,16 @@ const CharacterGenerator = () => {
        \`.             .' |   ||__|  .'   /    .'.''| |  
          \`''-...... -'   '---'     /    /___ / /   | |_ 
                                   |         |\\ \\._,\\ '/ 
-                                  |_________| \`--'  \`"  
-    `}
+                                  |_________| \`--'  \`"
+                                                          
+        ┏┓┏┓┏┓┏┓╋  ┓┏┏┏┓┏┓┓┏┏┓┏┓
+        ┗┻┗┫┗ ┛┗┗  ┗┻┛┗ ┗┻┗┛┗ ┛ 
+              ┛                      
+`}
                     </pre>
+                    {/* Updated text alignment to left */}
                     <div className="bg-zinc-900 rounded p-4">
-                        <p className="text-[#f79321] text-center">
+                        <p className="text-[#f79321] text-left">
                             eliza is a lightweight AI agent framework. It leverages Character files - JSON-formatted configurations
                             that define an AI character's personality, knowledge, and behavior patterns. This tool enables you
                             to develop a set of Character files based on your own lore, and connects the narratives of
@@ -339,8 +393,6 @@ const CharacterGenerator = () => {
                             className="w-full h-full object-cover rounded"
                         />
                     </div>
-
-
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -412,7 +464,7 @@ const CharacterGenerator = () => {
                                         value={formData.numCharacters}
                                         onChange={handleInputChange}
                                         min="1"
-                                        max="10"
+                                        max="9"
                                         className="w-full bg-zinc-900 rounded px-4 py-2 text-white"
                                     />
                                 </div>
@@ -462,14 +514,18 @@ const CharacterGenerator = () => {
                 {/* Results Display */}
                 {characters.length > 0 && (
                     <div className="space-y-4">
-                        <div className="flex items-start gap-2 text-[#f79321]">  {/* removed justify-center */}
-                            <TerminalIcon className="h-4 w-4" />
-                            <h2 className="text-lg">Generated Characters</h2>
+                        <div className="flex items-start gap-2 text-[#f79321]">
+                            <TerminalIcon className="h-4 w-4 mt-1" />
+                            <h2 className="text-lg text-left">Generated Characters</h2>
                         </div>
+
                         {characters.map((character, index) => (
                             <CharacterViewer key={index} character={character} />
                         ))}
-                        <RelationshipDiagram characters={characters} />
+
+                        {/* Add the SimpleRelationshipView here */}
+                        <SimpleRelationshipView characters={characters} />
+
                     </div>
                 )}
             </div>

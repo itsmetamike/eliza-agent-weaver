@@ -3,7 +3,6 @@
     "version": "1.0.0",
     "private": true,
     "dependencies": {
-        "@/components/ui": "^0.1.0",
         "lucide-react": "^0.464.0",
         "mermaid": "^10.4.0",
         "react": "^18.2.0",

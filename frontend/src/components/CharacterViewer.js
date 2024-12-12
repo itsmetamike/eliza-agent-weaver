@@ -1,5 +1,3 @@
-// src/components/CharacterViewer.js
-
 import React, { useState } from 'react';
 import { ChevronDown, Download } from 'lucide-react';
 
@@ -40,7 +38,7 @@ const CharacterViewer = ({ character }) => {
                 className="flex items-center justify-between p-4 cursor-pointer hover:bg-orange-50"
                 onClick={() => setIsOpen(!isOpen)}
             >
-                <h3 className="text-lg font-medium">{character.name}</h3>
+                <h3 className="text-lg font-medium text-left">{character.name}</h3>
                 <div className="flex items-center gap-2">
                     <button
                         onClick={(e) => {
@@ -59,16 +57,16 @@ const CharacterViewer = ({ character }) => {
             </div>
 
             {isOpen && (
-                <div className="p-4 border-t">
+                <div className="p-4 border-t text-left">
                     {sections.map((section) => (
                         <div key={section.title} className="mb-6">
-                            <h4 className="font-medium mb-2 text-[#f79321]">{section.title}</h4>
+                            <h4 className="font-medium mb-2 text-[#f79321] text-left">{section.title}</h4>
                             {section.subsections ? (
                                 <div className="space-y-4">
                                     {section.subsections.map((subsection) => (
                                         <div key={subsection.title} className="ml-4">
-                                            <h5 className="font-medium mb-2 text-gray-700">{subsection.title}</h5>
-                                            <ul className="list-disc list-inside space-y-1">
+                                            <h5 className="font-medium mb-2 text-gray-700 text-left">{subsection.title}</h5>
+                                            <ul className="list-disc text-left pl-4 space-y-1">
                                                 {subsection.data.map((item, index) => (
                                                     <li key={index} className="text-sm text-gray-600">
                                                         {item}
@@ -79,7 +77,7 @@ const CharacterViewer = ({ character }) => {
                                     ))}
                                 </div>
                             ) : (
-                                <ul className="list-disc list-inside space-y-1">
+                                <ul className="list-disc text-left pl-4 space-y-1">
                                     {section.data.map((item, index) => (
                                         <li key={index} className="text-sm text-gray-600">
                                             {item}

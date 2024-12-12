@@ -6,6 +6,18 @@ Eliza is a lightweight AI agent framework. It leverages Character files - JSON-f
 
 Eliza Agent Weaver enables you to develop a set of Character files based on your own lore, and connects the narratives of multiple agents together through their character files.
 
+<p align="center">
+  <img src="frontend/public/ex1.png" alt="Platform Screenshot 1" width="700"/>
+</p>
+
+<p align="center">
+  <img src="frontend/public/ex2.png" alt="Platform Screenshot 2" width="700"/>
+</p>
+
+<p align="center">
+  <img src="frontend/public/ex3.png" alt="Platform Screenshot 3" width="700"/>
+</p>
+
 ## Features
 
 - **Character Generation**: Create detailed AI character profiles based on custom world lore
